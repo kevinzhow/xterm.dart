@@ -1,14 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:dartssh2/dartssh2.dart';
 import 'package:example/src/platform_menu.dart';
 import 'package:example/src/virtual_keyboard.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:flutter_pty/flutter_pty.dart';
 import 'package:xterm/xterm.dart';
 
 void main() {
@@ -18,6 +15,15 @@ void main() {
 const _quickSshHost = 'k8-plus.tail4653d.ts.net';
 const _quickSshPort = 22;
 const _quickSshUsername = 'kevinzhow';
+const _sshSessions = <SshSessionConfig>[
+  SshSessionConfig(
+    name: 'kevinzhow@k8-plus',
+    host: _quickSshHost,
+    port: _quickSshPort,
+    username: _quickSshUsername,
+    note: 'Tailnet',
+  ),
+];
 
 bool get isDesktop {
   if (kIsWeb) return false;
@@ -49,101 +55,60 @@ class Home extends StatefulWidget {
 }
 
 class _HomeState extends State<Home> {
-  final terminal = Terminal(
-    maxLines: 10000,
-  );
-
-  final terminalController = TerminalController();
-
-  late final Pty pty;
-
-  @override
-  void initState() {
-    super.initState();
-
-    WidgetsBinding.instance.endOfFrame.then(
-      (_) {
-        if (mounted) _startPty();
-      },
-    );
-  }
-
-  void _startPty() {
-    pty = Pty.start(
-      shell,
-      columns: terminal.viewWidth,
-      rows: terminal.viewHeight,
-    );
-
-    pty.output
-        .cast<List<int>>()
-        .transform(Utf8Decoder())
-        .listen(terminal.write);
-
-    pty.exitCode.then((code) {
-      terminal.write('the process exited with exit code $code');
-    });
-
-    terminal.onOutput = (data) {
-      pty.write(const Utf8Encoder().convert(data));
-    };
-
-    terminal.onResize = (w, h, pw, ph) {
-      pty.resize(h, w);
-    };
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.transparent,
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _openQuickSsh(context),
-        icon: const Icon(Icons.cloud_outlined),
-        label: const Text('SSH kevinzhow'),
+      appBar: AppBar(
+        title: const Text('SSH Sessions'),
       ),
-      body: SafeArea(
-        child: TerminalView(
-          terminal,
-          controller: terminalController,
-          autofocus: true,
-          backgroundOpacity: 0.7,
-          onSecondaryTapDown: (details, offset) async {
-            final selection = terminalController.selection;
-            if (selection != null) {
-              final text = terminal.buffer.getText(selection);
-              terminalController.clearSelection();
-              await Clipboard.setData(ClipboardData(text: text));
-            } else {
-              final data = await Clipboard.getData('text/plain');
-              final text = data?.text;
-              if (text != null) {
-                terminal.paste(text);
-              }
-            }
-          },
-        ),
+      body: ListView.separated(
+        padding: const EdgeInsets.all(12),
+        itemCount: _sshSessions.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 8),
+        itemBuilder: (context, index) {
+          final session = _sshSessions[index];
+          return Card(
+            child: ListTile(
+              leading: const CircleAvatar(
+                child: Icon(Icons.terminal),
+              ),
+              title: Text(session.name),
+              subtitle: Text(
+                '${session.username}@${session.host}:${session.port}'
+                '${session.note == null ? '' : ' · ${session.note}'}',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _openQuickSsh(context, session),
+            ),
+          );
+        },
       ),
     );
   }
 
-  Future<void> _openQuickSsh(BuildContext context) async {
-    final password = await _promptPassword(context);
+  Future<void> _openQuickSsh(
+    BuildContext context,
+    SshSessionConfig session,
+  ) async {
+    final password = await _promptPassword(context, session);
     if (!mounted || password == null) return;
 
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => QuickSshPage(
-          host: _quickSshHost,
-          port: _quickSshPort,
-          username: _quickSshUsername,
+          host: session.host,
+          port: session.port,
+          username: session.username,
           password: password,
         ),
       ),
     );
   }
 
-  Future<String?> _promptPassword(BuildContext context) async {
+  Future<String?> _promptPassword(
+    BuildContext context,
+    SshSessionConfig session,
+  ) async {
     var password = '';
 
     return showDialog<String>(
@@ -155,7 +120,9 @@ class _HomeState extends State<Home> {
             autofocus: true,
             obscureText: true,
             decoration: const InputDecoration(
-              labelText: 'Password for kevinzhow@k8-plus.tail4653d.ts.net',
+              labelText: 'Password',
+            ).copyWith(
+              helperText: '${session.username}@${session.host}:${session.port}',
             ),
             onChanged: (value) => password = value,
             onSubmitted: (value) => Navigator.of(context).pop(value),
@@ -174,6 +141,22 @@ class _HomeState extends State<Home> {
       },
     );
   }
+}
+
+class SshSessionConfig {
+  const SshSessionConfig({
+    required this.name,
+    required this.host,
+    required this.port,
+    required this.username,
+    this.note,
+  });
+
+  final String name;
+  final String host;
+  final int port;
+  final String username;
+  final String? note;
 }
 
 class QuickSshPage extends StatefulWidget {
@@ -399,16 +382,4 @@ class _SshActionBar extends StatelessWidget {
       child: Text(label),
     );
   }
-}
-
-String get shell {
-  if (Platform.isMacOS || Platform.isLinux) {
-    return Platform.environment['SHELL'] ?? 'bash';
-  }
-
-  if (Platform.isWindows) {
-    return 'cmd.exe';
-  }
-
-  return 'sh';
 }
