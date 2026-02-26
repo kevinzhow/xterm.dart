@@ -504,10 +504,12 @@ void main() {
   });
 
   group('TerminalView.simulateScroll', () {
-    testWidgets('works', (tester) async {
+    testWidgets('works when alternate scroll mode (1007) is enabled',
+        (tester) async {
       final terminalOutput = <String>[];
       final terminal = Terminal(onOutput: terminalOutput.add);
       terminal.useAltBuffer();
+      terminal.write('\x1b[?1007h');
 
       await tester.pumpWidget(MaterialApp(
         home: TerminalView(terminal, autofocus: true, simulateScroll: true),
@@ -518,10 +520,26 @@ void main() {
       expect(terminalOutput.join(), contains('\x1B[B'));
     });
 
-    testWidgets('does nothing when disabled', (tester) async {
+    testWidgets('does not simulate arrow keys when 1007 is disabled',
+        (tester) async {
       final terminalOutput = <String>[];
       final terminal = Terminal(onOutput: terminalOutput.add);
       terminal.useAltBuffer();
+
+      await tester.pumpWidget(MaterialApp(
+        home: TerminalView(terminal, autofocus: true, simulateScroll: true),
+      ));
+
+      await tester.drag(find.byType(TerminalView), const Offset(0, -100));
+
+      expect(terminalOutput.join(), isEmpty);
+    });
+
+    testWidgets('does nothing when simulateScroll is disabled', (tester) async {
+      final terminalOutput = <String>[];
+      final terminal = Terminal(onOutput: terminalOutput.add);
+      terminal.useAltBuffer();
+      terminal.write('\x1b[?1007h');
 
       await tester.pumpWidget(MaterialApp(
         home: TerminalView(terminal, autofocus: true, simulateScroll: false),

@@ -24,9 +24,12 @@ class TerminalScrollGestureHandler extends StatefulWidget {
   /// Returns the pixel height of lines in the terminal.
   final double Function() getLineHeight;
 
-  /// Whether to simulate scroll events in the terminal when the application
-  /// doesn't declare it supports mouse wheel events. true by default as it
-  /// is the default behavior of most terminals.
+  /// Whether to allow fallback scroll simulation when the application doesn't
+  /// declare it supports mouse wheel events.
+  ///
+  /// In the alternate screen buffer, xterm-compatible terminals should only
+  /// simulate Up/Down keys when the application has enabled DECSET 1007
+  /// (Alternate Scroll Mode).
   final bool simulateScroll;
 
   final Widget child;
@@ -80,9 +83,12 @@ class _TerminalScrollGestureHandlerState
     }
   }
 
-  /// Send a single scroll event to the terminal. If [simulateScroll] is true,
-  /// then if the application doesn't recognize mouse wheel events, this method
-  /// will simulate scroll events by sending up/down arrow keys.
+  /// Send a single scroll event to the terminal.
+  ///
+  /// If the application doesn't recognize mouse wheel events, this may fall
+  /// back to simulating up/down arrow keys, but only when fallback is enabled
+  /// and the application has explicitly enabled DECSET 1007 (alternate scroll
+  /// mode).
   void _sendScrollEvent(bool up) {
     final position = widget.getCellOffset(lastPointerPosition);
 
@@ -92,7 +98,9 @@ class _TerminalScrollGestureHandlerState
       position,
     );
 
-    if (!handled && widget.simulateScroll) {
+    if (!handled &&
+        widget.simulateScroll &&
+        widget.terminal.altBufferMouseScrollMode) {
       widget.terminal.keyInput(
         up ? TerminalKey.arrowUp : TerminalKey.arrowDown,
       );
