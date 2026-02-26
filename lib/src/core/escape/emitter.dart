@@ -20,7 +20,8 @@ class EscapeEmitter {
   }
 
   String cursorPosition(int x, int y) {
-    return '\x1b[$y;${x}R';
+    // CPR (CSI row ; col R) is 1-based.
+    return '\x1b[${y + 1};${x + 1}R';
   }
 
   String bracketedPaste(String text) {

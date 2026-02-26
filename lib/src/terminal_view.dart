@@ -162,7 +162,8 @@ class TerminalViewState extends State<TerminalView> {
 
   late ScrollController _scrollController;
 
-  RenderTerminal get renderTerminal => _viewportKey.currentContext!.findRenderObject() as RenderTerminal;
+  RenderTerminal get renderTerminal =>
+      _viewportKey.currentContext!.findRenderObject() as RenderTerminal;
 
   @override
   void initState() {
@@ -264,7 +265,8 @@ class TerminalViewState extends State<TerminalView> {
         onAction: (action) {
           _scrollToBottom();
           // Android sends TextInputAction.newline when the user presses the virtual keyboard's enter key.
-          if (action == TextInputAction.done || action == TextInputAction.newline) {
+          if (action == TextInputAction.done ||
+              action == TextInputAction.newline) {
             widget.terminal.keyInput(TerminalKey.enter);
           }
         },
@@ -300,8 +302,10 @@ class TerminalViewState extends State<TerminalView> {
       terminalController: _controller,
       onTapUp: _onTapUp,
       onTapDown: _onTapDown,
-      onSecondaryTapDown: widget.onSecondaryTapDown != null ? _onSecondaryTapDown : null,
-      onSecondaryTapUp: widget.onSecondaryTapUp != null ? _onSecondaryTapUp : null,
+      onSecondaryTapDown:
+          widget.onSecondaryTapDown != null ? _onSecondaryTapDown : null,
+      onSecondaryTapUp:
+          widget.onSecondaryTapUp != null ? _onSecondaryTapUp : null,
       readOnly: widget.readOnly,
       child: child,
     );
@@ -333,7 +337,8 @@ class TerminalViewState extends State<TerminalView> {
   }
 
   Rect get globalCursorRect {
-    return renderTerminal.localToGlobal(renderTerminal.cursorOffset) & renderTerminal.cellSize;
+    return renderTerminal.localToGlobal(renderTerminal.cursorOffset) &
+        renderTerminal.cellSize;
   }
 
   void _onTapUp(TapUpDetails details) {
@@ -368,6 +373,15 @@ class TerminalViewState extends State<TerminalView> {
   }
 
   void _onInsert(String text) {
+    if (text == '\n' || text == '\r' || text == '\r\n') {
+      final handled = widget.terminal.keyInput(TerminalKey.enter);
+      if (!handled) {
+        widget.terminal.textInput('\r');
+      }
+      _scrollToBottom();
+      return;
+    }
+
     final key = charToTerminalKey(text.trim());
 
     // On mobile platforms there is no guarantee that virtual keyboard will
@@ -421,9 +435,30 @@ class TerminalViewState extends State<TerminalView> {
 
     if (handled) {
       _scrollToBottom();
+      return KeyEventResult.handled;
     }
 
-    return handled ? KeyEventResult.handled : KeyEventResult.ignored;
+    final hasPrintableCharacter =
+        event is KeyDownEvent || event is KeyRepeatEvent;
+    final character = event.character;
+    final isPrintableCharacter = character != null &&
+        character.isNotEmpty &&
+        !character.runes.any((rune) => rune < 0x20 || rune == 0x7f);
+    final hasModifiers = HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isAltPressed;
+    final shouldFallbackToTextInput = hasPrintableCharacter &&
+        !widget.readOnly &&
+        !hasModifiers &&
+        (widget.hardwareKeyboardOnly || !hasInputConnection) &&
+        isPrintableCharacter;
+
+    if (shouldFallbackToTextInput) {
+      widget.terminal.textInput(character);
+      _scrollToBottom();
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
   }
 
   void _onKeyboardShow() {

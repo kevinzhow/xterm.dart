@@ -106,6 +106,30 @@ void main() {
     });
   });
 
+  group('TerminalView.mobile text input connection', () {
+    testWidgets('continues text input in alternate screen', (tester) async {
+      final terminalOutput = <String>[];
+      final terminal = Terminal(onOutput: terminalOutput.add);
+
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: TerminalView(terminal, autofocus: true),
+        ),
+      ));
+
+      await tester.tap(find.byType(TerminalView));
+      await tester.pump(const Duration(seconds: 1));
+
+      terminal.useAltBuffer();
+      await tester.pump();
+
+      binding.testTextInput.enterText('abc');
+      await binding.idle();
+
+      expect(terminalOutput.join(), 'abc');
+    });
+  });
+
   group('TerminalView.focusNode', () {
     testWidgets('is not listened when terminal is disposed', (tester) async {
       final terminal = Terminal();
@@ -417,6 +441,65 @@ void main() {
 
       verify(inputHandler.call(any));
       expect(terminalOutput.join(), 'AAA');
+    });
+
+    testWidgets('converts soft keyboard newline text to enter key',
+        (tester) async {
+      final inputHandler = MockTerminalInputHandler();
+      when(inputHandler.call(any)).thenAnswer((_) => 'RET');
+
+      final terminalOutput = <String>[];
+      final terminal = Terminal(
+        inputHandler: inputHandler,
+        onOutput: terminalOutput.add,
+      );
+
+      await tester.pumpWidget(MaterialApp(
+        home: TerminalView(terminal, autofocus: true),
+      ));
+
+      await tester.tap(find.byType(TerminalView));
+      await tester.pump(const Duration(seconds: 1));
+
+      binding.testTextInput.enterText('\n');
+      await binding.idle();
+      await tester.pumpAndSettle();
+
+      verify(inputHandler.call(any));
+      expect(terminalOutput.join(), 'RET');
+    });
+
+    testWidgets(
+        'falls back to text input for printable key events without text input connection',
+        (tester) async {
+      final terminalOutput = <String>[];
+      final terminal = Terminal(onOutput: terminalOutput.add);
+
+      await tester.pumpWidget(MaterialApp(
+        home: TerminalView(
+          terminal,
+          autofocus: true,
+          hardwareKeyboardOnly: true,
+        ),
+      ));
+
+      await tester.tap(find.byType(TerminalView));
+      await tester.pump(const Duration(seconds: 1));
+
+      await tester.sendKeyDownEvent(
+        LogicalKeyboardKey.keyA,
+        character: 'a',
+      );
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.keyA);
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.control);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.keyD);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.keyD);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.control);
+
+      await tester.pumpAndSettle();
+
+      expect(terminalOutput.join(), 'a\x04');
     });
   });
 

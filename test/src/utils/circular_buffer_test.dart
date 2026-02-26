@@ -367,5 +367,25 @@ void main() {
       expect(item2.attached, false);
       expect(item3.index, 0);
     });
+
+    test('does not leave detached stale references after in-buffer moves', () {
+      final cl = IndexAwareCircularBuffer<IndexedValue<int>>(6);
+      cl.pushAll(List<int>.generate(6, (index) => index).map(IndexedValue.new));
+
+      // Mimic Buffer.scrollUp style assignments that move existing attached
+      // items within the same buffer and then fill the tail with a new line.
+      for (var i = 0; i < 5; i++) {
+        cl[i] = cl[i + 1];
+      }
+      cl[5] = IndexedValue(99);
+
+      expect(() => cl.insert(5, IndexedValue(100)), returnsNormally);
+      expect(cl.length, 6);
+
+      // Touch every slot to make sure there are no detached items lingering.
+      for (var i = 0; i < cl.length; i++) {
+        expect(cl[i].attached, isTrue);
+      }
+    });
   });
 }

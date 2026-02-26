@@ -234,7 +234,7 @@ class CustomTextEditState extends State<CustomTextEdit> with TextInputClient {
     // Reset editing state if composing is done
     if (_currentEditingState.composing.isCollapsed &&
         _currentEditingState.text != _initEditingState.text) {
-      _connection!.setEditingState(_initEditingState);
+      _connection?.setEditingState(_initEditingState);
     }
   }
 
@@ -256,7 +256,9 @@ class CustomTextEditState extends State<CustomTextEdit> with TextInputClient {
 
   @override
   void connectionClosed() {
-    // print('connectionClosed');
+    _connection = null;
+    _currentEditingState = _initEditingState;
+    widget.onComposing(null);
   }
 
   @override

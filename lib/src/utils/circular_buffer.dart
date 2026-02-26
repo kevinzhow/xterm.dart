@@ -38,7 +38,22 @@ class IndexAwareCircularBuffer<T extends IndexedItem> {
   @pragma('vm:prefer-inline')
   void _adoptChild(int index, T child) {
     final cyclicIndex = _getCyclicIndex(index);
-    _array[cyclicIndex]?._detach();
+    final previousIndex = identical(child._owner, this) ? child.index : null;
+    final previousCyclicIndex =
+        previousIndex == null ? null : _getCyclicIndex(previousIndex);
+
+    if (previousCyclicIndex != null &&
+        previousCyclicIndex != cyclicIndex &&
+        identical(_array[previousCyclicIndex], child)) {
+      // Moving an existing child within the same buffer can temporarily create
+      // duplicate references (for example during scroll operations). Clear the
+      // old slot before attaching to avoid leaving a stale detached reference.
+      _array[previousCyclicIndex] = null;
+    }
+
+    if (!identical(_array[cyclicIndex], child)) {
+      _array[cyclicIndex]?._detach();
+    }
     _array[cyclicIndex] = child.._attach(this, index);
   }
 
@@ -48,8 +63,36 @@ class IndexAwareCircularBuffer<T extends IndexedItem> {
   void _moveChild(int fromIndex, int toIndex) {
     final fromCyclicIndex = _getCyclicIndex(fromIndex);
     final toCyclicIndex = _getCyclicIndex(toIndex);
-    _array[toCyclicIndex]?._detach();
-    _array[toCyclicIndex] = _array[fromCyclicIndex]?.._move(toIndex);
+    if (fromCyclicIndex == toCyclicIndex) {
+      final child = _array[fromCyclicIndex];
+      if (child != null) {
+        if (child.attached) {
+          child._move(toIndex);
+        } else {
+          child._attach(this, toIndex);
+        }
+      }
+      return;
+    }
+
+    final movingChild = _array[fromCyclicIndex];
+    final destinationChild = _array[toCyclicIndex];
+
+    if (!identical(destinationChild, movingChild)) {
+      destinationChild?._detach();
+    }
+
+    if (movingChild != null) {
+      if (movingChild.attached) {
+        movingChild._move(toIndex);
+      } else {
+        // Recover from stale detached references left by previous in-buffer
+        // moves, and keep the buffer structurally consistent.
+        movingChild._attach(this, toIndex);
+      }
+    }
+
+    _array[toCyclicIndex] = movingChild;
     _array[fromCyclicIndex] = null;
   }
 

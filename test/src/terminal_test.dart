@@ -196,6 +196,17 @@ void main() {
       expect(lastData, isNull);
     });
   });
+
+  group('Terminal device status reports', () {
+    test('cursor position report uses 1-based coordinates', () {
+      final output = <String>[];
+      final terminal = Terminal(onOutput: output.add);
+
+      terminal.sendCursorPosition();
+
+      expect(output.single, '\x1b[1;1R');
+    });
+  });
 }
 
 class _TestInputHandler implements TerminalInputHandler {
