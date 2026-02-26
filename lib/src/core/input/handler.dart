@@ -121,7 +121,7 @@ class KeytabInputHandler implements TerminalInputHandler {
       alt: event.alt,
       shift: event.shift,
       newLineMode: event.state.lineFeedMode,
-      appCursorKeys: event.state.appKeypadMode,
+      appCursorKeys: event.state.cursorKeysMode,
       appKeyPad: event.state.appKeypadMode,
       appScreen: event.altBuffer,
       macos: event.platform == TerminalTargetPlatform.macos,
@@ -188,8 +188,18 @@ class CtrlInputHandler implements TerminalInputHandler {
 
 /// A [TerminalInputHandler] that translates alt + key events into escape
 /// sequences. For example, alt + a becomes ^[a.
+///
+/// On macOS the Option key is normally used for native character composition
+/// (e.g. Option+e → accented characters), so this handler skips it by default.
+/// Set [forceAltOnMacos] to `true` to generate ESC-prefixed sequences on macOS
+/// as well, which is useful for applications that rely on Meta/Alt bindings
+/// (e.g. Emacs).
 class AltInputHandler implements TerminalInputHandler {
-  const AltInputHandler();
+  const AltInputHandler({this.forceAltOnMacos = false});
+
+  /// When true, Option+letter on macOS generates an ESC-prefixed sequence
+  /// instead of being ignored. Defaults to false.
+  final bool forceAltOnMacos;
 
   @override
   String? call(TerminalKeyboardEvent event) {
@@ -197,7 +207,7 @@ class AltInputHandler implements TerminalInputHandler {
       return null;
     }
 
-    if (event.platform == TerminalTargetPlatform.macos) {
+    if (event.platform == TerminalTargetPlatform.macos && !forceAltOnMacos) {
       return null;
     }
 

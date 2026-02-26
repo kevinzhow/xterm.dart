@@ -168,6 +168,7 @@ class TerminalViewState extends State<TerminalView> {
   @override
   void initState() {
     _focusNode = widget.focusNode ?? FocusNode();
+    _focusNode.addListener(_onFocusChange);
     _controller = widget.controller ?? TerminalController();
     _scrollController = widget.scrollController ?? ScrollController();
     _shortcutManager = ShortcutManager(
@@ -176,13 +177,23 @@ class TerminalViewState extends State<TerminalView> {
     super.initState();
   }
 
+  void _onFocusChange() {
+    if (_focusNode.hasFocus) {
+      widget.terminal.focusIn();
+    } else {
+      widget.terminal.focusOut();
+    }
+  }
+
   @override
   void didUpdateWidget(TerminalView oldWidget) {
     if (oldWidget.focusNode != widget.focusNode) {
+      _focusNode.removeListener(_onFocusChange);
       if (oldWidget.focusNode == null) {
         _focusNode.dispose();
       }
       _focusNode = widget.focusNode ?? FocusNode();
+      _focusNode.addListener(_onFocusChange);
     }
     if (oldWidget.controller != widget.controller) {
       if (oldWidget.controller == null) {
@@ -202,6 +213,7 @@ class TerminalViewState extends State<TerminalView> {
 
   @override
   void dispose() {
+    _focusNode.removeListener(_onFocusChange);
     if (widget.focusNode == null) {
       _focusNode.dispose();
     }

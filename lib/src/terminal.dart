@@ -63,6 +63,15 @@ class Terminal with Observable implements TerminalState, EscapeHandler {
   /// escape sequence.
   void Function(String code, List<String> args)? onPrivateOSC;
 
+  /// Optional callback to supply the current foreground color when a program
+  /// queries it via OSC 10 (e.g. `OSC 10 ; ? ST`). Return an (r, g, b) triple
+  /// with 8-bit components. Defaults to opaque white (255, 255, 255) if null.
+  (int, int, int) Function()? onRequestForegroundColor;
+
+  /// Optional callback to supply the current background color when a program
+  /// queries it via OSC 11. Defaults to opaque black (0, 0, 0) if null.
+  (int, int, int) Function()? onRequestBackgroundColor;
+
   /// Flag to toggle os specific behaviors.
   final TerminalTargetPlatform platform;
 
@@ -81,6 +90,8 @@ class Terminal with Observable implements TerminalState, EscapeHandler {
     this.inputHandler = defaultInputHandler,
     this.mouseHandler = defaultMouseHandler,
     this.onPrivateOSC,
+    this.onRequestForegroundColor,
+    this.onRequestBackgroundColor,
     this.reflowEnabled = true,
     this.wordSeparators,
   });
@@ -143,6 +154,12 @@ class Terminal with Observable implements TerminalState, EscapeHandler {
 
   bool _reportFocusMode = false;
 
+  /// Cursor style requested by the program via DECSCUSR (CSI Ps SP q).
+  /// Null when the program has not set a cursor style.
+  /// Values: 0/1 = blinking block, 2 = steady block, 3 = blinking underline,
+  ///         4 = steady underline, 5 = blinking bar, 6 = steady bar.
+  int? _programCursorStyle;
+
   bool _altBufferMouseScrollMode = false;
 
   bool _bracketedPasteMode = false;
@@ -195,6 +212,9 @@ class Terminal with Observable implements TerminalState, EscapeHandler {
 
   @override
   bool get reportFocusMode => _reportFocusMode;
+
+  /// Cursor style requested by the program via DECSCUSR, or null if not set.
+  int? get programCursorStyle => _programCursorStyle;
 
   @override
   bool get altBufferMouseScrollMode => _altBufferMouseScrollMode;
@@ -326,6 +346,24 @@ class Terminal with Observable implements TerminalState, EscapeHandler {
     }
   }
 
+  /// Notifies the program that the terminal has received focus.
+  /// Only sends the escape sequence when [reportFocusMode] is enabled
+  /// (DECSET 1004).
+  void focusIn() {
+    if (_reportFocusMode) {
+      onOutput?.call('\x1b[I');
+    }
+  }
+
+  /// Notifies the program that the terminal has lost focus.
+  /// Only sends the escape sequence when [reportFocusMode] is enabled
+  /// (DECSET 1004).
+  void focusOut() {
+    if (_reportFocusMode) {
+      onOutput?.call('\x1b[O');
+    }
+  }
+
   // Handle a mouse event and return true if it was handled.
   bool mouseInput(
     TerminalMouseButton button,
@@ -367,10 +405,6 @@ class Terminal with Observable implements TerminalState, EscapeHandler {
 
     _viewWidth = newWidth;
     _viewHeight = newHeight;
-
-    if (buffer == _altBuffer) {
-      buffer.clearScrollback();
-    }
 
     _altBuffer.resetVerticalMargins();
     _mainBuffer.resetVerticalMargins();
@@ -647,6 +681,18 @@ class Terminal with Observable implements TerminalState, EscapeHandler {
   }
 
   @override
+  void sendForegroundColor() {
+    final (r, g, b) = onRequestForegroundColor?.call() ?? (255, 255, 255);
+    onOutput?.call(_emitter.foregroundColor(r, g, b));
+  }
+
+  @override
+  void sendBackgroundColor() {
+    final (r, g, b) = onRequestBackgroundColor?.call() ?? (0, 0, 0);
+    onOutput?.call(_emitter.backgroundColor(r, g, b));
+  }
+
+  @override
   void unknownCSI(int finalByte) {
     // no-op
   }
@@ -733,6 +779,11 @@ class Terminal with Observable implements TerminalState, EscapeHandler {
   @override
   void setReportFocusMode(bool enabled) {
     _reportFocusMode = enabled;
+  }
+
+  @override
+  void setCursorStyle(int style) {
+    _programCursorStyle = style;
   }
 
   @override
@@ -840,6 +891,16 @@ class Terminal with Observable implements TerminalState, EscapeHandler {
   @override
   void unsetCursorStrikethrough() {
     _cursorStyle.unsetStrikethrough();
+  }
+
+  @override
+  void setCursorOverline() {
+    _cursorStyle.setOverline();
+  }
+
+  @override
+  void unsetCursorOverline() {
+    _cursorStyle.unsetOverline();
   }
 
   @override

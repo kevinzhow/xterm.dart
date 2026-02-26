@@ -151,6 +151,11 @@ abstract class EscapeHandler {
 
   void sendSize();
 
+  /// Set cursor style (DECSCUSR). [style] values:
+  /// 0/1 = blinking block, 2 = steady block, 3 = blinking underline,
+  /// 4 = steady underline, 5 = blinking bar, 6 = steady bar.
+  void setCursorStyle(int style);
+
   /* Select Graphic Rendition (SGR) */
 
   void resetCursorStyle();
@@ -187,6 +192,10 @@ abstract class EscapeHandler {
 
   void unsetCursorStrikethrough();
 
+  void setCursorOverline();
+
+  void unsetCursorOverline();
+
   void setForegroundColor16(int color);
 
   void setForegroundColor256(int index);
@@ -210,6 +219,12 @@ abstract class EscapeHandler {
   void setTitle(String name);
 
   void setIconName(String name);
+
+  /// Called when the program queries the default foreground color (OSC 10 ; ?).
+  void sendForegroundColor();
+
+  /// Called when the program queries the default background color (OSC 11 ; ?).
+  void sendBackgroundColor();
 
   void unknownOSC(String code, List<String> args);
 }

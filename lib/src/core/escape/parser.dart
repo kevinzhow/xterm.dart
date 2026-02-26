@@ -216,6 +216,7 @@ class EscapeParser {
     }
 
     _csi.params.clear();
+    _csi.intermediate = null;
 
     // test whether the csi is a `CSI ? Ps ...` or `CSI Ps ...`
     final prefix = _queue.peek();
@@ -252,7 +253,7 @@ class EscapeParser {
       }
 
       if (char > Ascii.NULL && char < Ascii.num0) {
-        // intermediates.add(char);
+        _csi.intermediate = char;
         continue;
       }
 
@@ -278,6 +279,7 @@ class EscapeParser {
     'l'.codeUnitAt(0): _csiHandleMode,
     'm'.codeUnitAt(0): _csiHandleSgr,
     'n'.codeUnitAt(0): _csiHandleDeviceStatusReport,
+    'q'.codeUnitAt(0): _csiHandleCursorStyle,
     'r'.codeUnitAt(0): _csiHandleSetMargins,
     't'.codeUnitAt(0): _csiWindowManipulation,
     'A'.codeUnitAt(0): _csiHandleCursorUp,
@@ -472,6 +474,34 @@ class EscapeParser {
           handler.unsetCursorStrikethrough();
           continue;
 
+        // SGR 53: Overline On
+        // https://terminalguide.namepad.de/seq/csi_sm__53/
+        case 53:
+          handler.setCursorOverline();
+          continue;
+        // SGR 55: Overline Off
+        case 55:
+          handler.unsetCursorOverline();
+          continue;
+
+        // SGR 58: Set underline color (extended). Consumed but not rendered
+        // (requires a dedicated cell data field for underline color).
+        // https://terminalguide.namepad.de/seq/csi_sm__58/
+        case 58:
+          // Skip mode + 1 or 3 extra params (5;index or 2;r;g;b).
+          if (i + 1 < params.length) {
+            final mode = params[i + 1];
+            if (mode == 2 && i + 4 < params.length) {
+              i += 4;
+            } else if (mode == 5 && i + 2 < params.length) {
+              i += 2;
+            }
+          }
+          continue;
+        // SGR 59: Reset underline color.
+        case 59:
+          continue;
+
         case 30:
           handler.setForegroundColor16(NamedColor.black);
           continue;
@@ -631,6 +661,20 @@ class EscapeParser {
       case 6:
         return handler.sendCursorPosition();
     }
+  }
+
+  /// `ESC [ Ps SP q` Set Cursor Style (DECSCUSR)
+  ///
+  /// https://terminalguide.namepad.de/seq/csi_sq_sp/
+  ///
+  /// Ps: 0 or 1 = blinking block, 2 = steady block, 3 = blinking underline,
+  ///     4 = steady underline, 5 = blinking bar, 6 = steady bar
+  void _csiHandleCursorStyle() {
+    // DECSCUSR requires the SP (0x20) intermediate byte.
+    if (_csi.intermediate != Ascii.space) return;
+
+    final style = _csi.params.isEmpty ? 0 : _csi.params[0];
+    handler.setCursorStyle(style);
   }
 
   /// `ESC [ Ps ; Ps r` Set Top and Bottom Margins (DECSTBM)
@@ -1035,10 +1079,15 @@ class EscapeParser {
           handler.useAltBuffer();
         } else {
           handler.useMainBuffer();
+          handler.restoreCursor();
         }
         return;
       case 2004:
         return handler.setBracketedPasteMode(enabled);
+      case 2026:
+        // Synchronized Output Mode. Batches screen updates to reduce flicker.
+        // Accepted silently — Flutter's rendering is inherently synchronized.
+        return;
       default:
         return handler.setUnknownDecMode(mode, enabled);
     }
@@ -1071,6 +1120,12 @@ class EscapeParser {
           return true;
         case '2':
           handler.setTitle(pt);
+          return true;
+        case '10':
+          if (pt == '?') handler.sendForegroundColor();
+          return true;
+        case '11':
+          if (pt == '?') handler.sendBackgroundColor();
           return true;
       }
     }
@@ -1129,7 +1184,6 @@ class _Csi {
   _Csi({
     required this.params,
     required this.finalByte,
-    // required this.intermediates,
   });
 
   int? prefix;
@@ -1137,7 +1191,10 @@ class _Csi {
   List<int> params;
 
   int finalByte;
-  // final List<int> intermediates;
+
+  /// The last intermediate byte encountered in this CSI sequence (e.g. SP for
+  /// DECSCUSR), or null if there was none.
+  int? intermediate;
 
   @override
   String toString() {

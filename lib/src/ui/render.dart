@@ -126,6 +126,24 @@ class RenderTerminal extends RenderBox with RelayoutWhenSystemFontsChangeMixin {
     markNeedsPaint();
   }
 
+  /// Returns the cursor type to render, giving priority to the cursor style
+  /// requested by the program via DECSCUSR (CSI Ps SP q) over the widget's
+  /// static [_cursorType].
+  TerminalCursorType get _resolvedCursorType {
+    final style = _terminal.programCursorStyle;
+    if (style == null) return _cursorType;
+    switch (style) {
+      case 3:
+      case 4:
+        return TerminalCursorType.underline;
+      case 5:
+      case 6:
+        return TerminalCursorType.verticalBar;
+      default: // 0, 1, 2 — block
+        return TerminalCursorType.block;
+    }
+  }
+
   bool _alwaysShowCursor;
   set alwaysShowCursor(bool value) {
     if (value == _alwaysShowCursor) return;
@@ -431,7 +449,7 @@ class RenderTerminal extends RenderBox with RelayoutWhenSystemFontsChangeMixin {
         _painter.paintCursor(
           canvas,
           offset + cursorOffset,
-          cursorType: _cursorType,
+          cursorType: _resolvedCursorType,
           hasFocus: _focusNode.hasFocus,
         );
       }

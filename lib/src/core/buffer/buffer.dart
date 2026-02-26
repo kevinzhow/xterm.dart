@@ -446,12 +446,11 @@ class Buffer {
         }
       }
     } else {
-      // Shrink smaller
+      // Shrink smaller — excess bottom lines become scrollback instead of
+      // being deleted, so a subsequent grow can recover them.
       for (var i = 0; i < oldHeight - newHeight; i++) {
         if (_cursorY > newHeight - 1) {
           _cursorY--;
-        } else {
-          lines.pop();
         }
       }
     }

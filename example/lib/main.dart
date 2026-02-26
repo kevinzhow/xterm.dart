@@ -188,7 +188,7 @@ class _QuickSshPageState extends State<QuickSshPage> {
   SSHClient? _client;
   SSHSession? _session;
   final List<StreamSubscription<dynamic>> _subscriptions = [];
-  var _title = '$_quickSshUsername@$_quickSshHost';
+  late String _title = '${widget.username}@${widget.host}';
   var _connected = false;
 
   @override
@@ -278,19 +278,19 @@ class _QuickSshPageState extends State<QuickSshPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_title),
-        actions: [
-          if (!_connected)
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              onPressed: _connect,
-              tooltip: 'Reconnect',
-            ),
-        ],
-      ),
       body: Column(
         children: [
+          AppBar(
+            title: Text(_title),
+            actions: [
+              if (!_connected)
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  onPressed: _connect,
+                  tooltip: 'Reconnect',
+                ),
+            ],
+          ),
           Expanded(
             child: TerminalView(
               key: _terminalViewKey,
@@ -300,36 +300,49 @@ class _QuickSshPageState extends State<QuickSshPage> {
               deleteDetection: true,
             ),
           ),
-          _SshActionBar(
-            onKey: (key, {shift = false, alt = false, ctrl = false}) {
-              terminal.keyInput(key, shift: shift, alt: alt, ctrl: ctrl);
-              _terminalViewKey.currentState?.requestKeyboard();
-            },
-            onCtrlChar: (char) {
-              terminal.charInput(char.codeUnitAt(0), ctrl: true);
-              _terminalViewKey.currentState?.requestKeyboard();
-            },
-            onRequestKeyboard: () =>
-                _terminalViewKey.currentState?.requestKeyboard(),
-          ),
-          if (!isDesktop)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: VirtualKeyboardView(keyboard),
+          SafeArea(
+            top: false,
+            child: _SshToolbar(
+              title: _title,
+              connected: _connected,
+              keyboard: keyboard,
+              onBack: () => Navigator.of(context).maybePop(),
+              onReconnect: _connect,
+              onKey: (key, {shift = false, alt = false, ctrl = false}) {
+                terminal.keyInput(key, shift: shift, alt: alt, ctrl: ctrl);
+                _terminalViewKey.currentState?.requestKeyboard();
+              },
+              onCtrlChar: (char) {
+                terminal.charInput(char.codeUnitAt(0), ctrl: true);
+                _terminalViewKey.currentState?.requestKeyboard();
+              },
+              onRequestKeyboard: () =>
+                  _terminalViewKey.currentState?.requestKeyboard(),
             ),
+          ),
         ],
       ),
     );
   }
 }
 
-class _SshActionBar extends StatelessWidget {
-  const _SshActionBar({
+class _SshToolbar extends StatelessWidget {
+  const _SshToolbar({
+    required this.title,
+    required this.connected,
+    required this.keyboard,
+    required this.onBack,
+    required this.onReconnect,
     required this.onKey,
     required this.onCtrlChar,
     required this.onRequestKeyboard,
   });
 
+  final String title;
+  final bool connected;
+  final VirtualKeyboard keyboard;
+  final VoidCallback onBack;
+  final VoidCallback onReconnect;
   final void Function(
     TerminalKey key, {
     bool shift,
@@ -341,45 +354,226 @@ class _SshActionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final items = <Widget>[
-      _btn('Esc', () => onKey(TerminalKey.escape)),
-      _btn('Tab', () => onKey(TerminalKey.tab)),
-      _btn('Enter', () => onKey(TerminalKey.enter)),
-      _btn('Up', () => onKey(TerminalKey.arrowUp)),
-      _btn('Down', () => onKey(TerminalKey.arrowDown)),
-      _btn('Left', () => onKey(TerminalKey.arrowLeft)),
-      _btn('Right', () => onKey(TerminalKey.arrowRight)),
-      _btn('Ctrl+C', () => onCtrlChar('c')),
-      _btn('Ctrl+D', () => onCtrlChar('d')),
-      _btn('Ctrl+L', () => onCtrlChar('l')),
-      _btn('Ctrl+Z', () => onCtrlChar('z')),
-      _btn('Kb', onRequestKeyboard),
-    ];
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Material(
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      color: colorScheme.surface.withValues(alpha: 0.96),
+      elevation: 1,
       child: SizedBox(
-        height: 44,
-        child: ListView.separated(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          scrollDirection: Axis.horizontal,
-          itemBuilder: (_, i) => items[i],
-          separatorBuilder: (_, __) => const SizedBox(width: 6),
-          itemCount: items.length,
+        height: 52,
+        child: Row(
+          children: [
+            Expanded(
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                children: [
+                  _iconBtn(Icons.arrow_back, onBack, tooltip: 'Back'),
+                  const SizedBox(width: 6),
+                  _statusChip(context),
+                  const SizedBox(width: 6),
+                  _modifierGroup(context),
+                  const SizedBox(width: 6),
+                  _btn('Esc', () => onKey(TerminalKey.escape)),
+                  _btn('Tab', () => onKey(TerminalKey.tab)),
+                  _btn('Enter', () => onKey(TerminalKey.enter)),
+                  _btn('Up', () => onKey(TerminalKey.arrowUp)),
+                  _btn('Down', () => onKey(TerminalKey.arrowDown)),
+                  _btn('Left', () => onKey(TerminalKey.arrowLeft)),
+                  _btn('Right', () => onKey(TerminalKey.arrowRight)),
+                  _btn('C+C', () => onCtrlChar('c')),
+                  _btn('C+D', () => onCtrlChar('d')),
+                  _btn('C+L', () => onCtrlChar('l')),
+                  _btn('C+Z', () => onCtrlChar('z')),
+                  _btn('Kb', onRequestKeyboard),
+                  if (!connected)
+                    _btn('Reconnect', onReconnect, prominent: true),
+                  const SizedBox(width: 4),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _btn(String label, VoidCallback onPressed) {
-    return OutlinedButton(
-      onPressed: onPressed,
-      style: OutlinedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        minimumSize: const Size(0, 32),
-        visualDensity: VisualDensity.compact,
+  Widget _modifierGroup(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return AnimatedBuilder(
+      animation: keyboard,
+      builder: (context, _) {
+        return Container(
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: colorScheme.outlineVariant),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _modifierPill(
+                'Ctrl',
+                keyboard.ctrl,
+                () => keyboard.ctrl = !keyboard.ctrl,
+              ),
+              _divider(colorScheme),
+              _modifierPill(
+                'Alt',
+                keyboard.alt,
+                () => keyboard.alt = !keyboard.alt,
+              ),
+              _divider(colorScheme),
+              _modifierPill(
+                'Shift',
+                keyboard.shift,
+                () => keyboard.shift = !keyboard.shift,
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _statusChip(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final color = connected ? Colors.green : colorScheme.error;
+    final fg = colorScheme.onSurface;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
-      child: Text(label),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 8),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 220),
+            child: Text(
+              title,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: fg,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _modifierPill(String label, bool selected, VoidCallback onTap) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: selected ? Colors.white.withValues(alpha: 0.08) : null,
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _divider(ColorScheme colorScheme) {
+    return Container(
+      width: 1,
+      height: 20,
+      color: colorScheme.outlineVariant,
+    );
+  }
+
+  Widget _iconBtn(
+    IconData icon,
+    VoidCallback onPressed, {
+    required String tooltip,
+  }) {
+    return SizedBox(
+      width: 34,
+      height: 34,
+      child: IconButton(
+        onPressed: onPressed,
+        tooltip: tooltip,
+        iconSize: 18,
+        padding: EdgeInsets.zero,
+        visualDensity: VisualDensity.compact,
+        style: IconButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          side: const BorderSide(width: 0.8),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+        icon: Icon(icon),
+      ),
+    );
+  }
+
+  Widget _btn(
+    String label,
+    VoidCallback onPressed, {
+    bool prominent = false,
+  }) {
+    final style = prominent
+        ? FilledButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            minimumSize: const Size(0, 34),
+            visualDensity: VisualDensity.compact,
+          )
+        : OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            minimumSize: const Size(0, 34),
+            visualDensity: VisualDensity.compact,
+            side: const BorderSide(width: 0.8),
+          );
+
+    final child = Text(label, style: const TextStyle(fontSize: 12));
+
+    if (prominent) {
+      return Padding(
+        padding: const EdgeInsets.only(right: 6),
+        child: FilledButton(
+          onPressed: onPressed,
+          style: style,
+          child: child,
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: OutlinedButton(
+        onPressed: onPressed,
+        style: style,
+        child: child,
+      ),
     );
   }
 }

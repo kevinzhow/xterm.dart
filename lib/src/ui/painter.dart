@@ -215,6 +215,22 @@ class TerminalPainter {
     }
 
     canvas.drawParagraph(paragraph, offset);
+
+    // Draw overline (SGR 53) directly on the canvas since Flutter's TextStyle
+    // does not support overline decoration.
+    if (cellData.flags & CellFlags.overline != 0) {
+      final color = cellData.flags & CellFlags.inverse == 0
+          ? resolveForegroundColor(cellData.foreground)
+          : resolveBackgroundColor(cellData.background);
+      final paint = Paint()
+        ..color = color
+        ..strokeWidth = 1;
+      canvas.drawLine(
+        Offset(offset.dx, offset.dy),
+        Offset(offset.dx + _cellSize.width, offset.dy),
+        paint,
+      );
+    }
   }
 
   /// Paints the background of a cell represented by [cellData] to [canvas] at
